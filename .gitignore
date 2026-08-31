@@ -1,0 +1,55 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.retry
+*.swp
+*.swo
+*~
+
+# Terraform working data
+.terraform/
+terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform/*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Provider mirrors and caches
+.cache/
+terraform-provider-mirror/
+terraform-plugin-cache/
+
+# Local build and bundle outputs
+dist/
+build/
+
+# Runtime artefacts
+.tmp/
+terraform/.generated/
+terraform/*.auto.tfvars.json
+terraform/.terraformrc.local
+
+# VM images and manifests generated at runtime
+images/*.img
+images/*.qcow2
+images/*.iso
+images/*.sha256
+images/*.SHA256SUMS
+images/*.SHA256SUMS.gpg
+images/*.metadata.json
+images/*.partial
+images/*.part
+
+# Generated keys and secrets
+*.pem
+*.key
+*.pub.tmp
+id_*
+!images/.gitkeep

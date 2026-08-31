@@ -1,0 +1,66 @@
+#cloud-config
+preserve_hostname: false
+hostname: ${hostname}
+fqdn: ${hostname}
+manage_etc_hosts: true
+disable_root: true
+ssh_pwauth: false
+locale: ${locale}
+timezone: ${timezone}
+package_update: ${install_docker || install_qemu_guest_agent}
+package_upgrade: false
+
+users:
+  - default
+  - name: ${username}
+    gecos: Disposable Ubuntu User
+    groups:
+      - adm
+      - sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+write_files:
+  - path: /usr/local/sbin/kvm-disposable-ubuntu-guest-setup.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      export DEBIAN_FRONTEND=noninteractive
+
+      if ${install_docker}; then
+        apt-get update
+        apt-get install -y docker.io
+        if apt-cache show docker-compose-v2 >/dev/null 2>&1; then
+          apt-get install -y docker-compose-v2
+        elif apt-cache show docker-compose-plugin >/dev/null 2>&1; then
+          apt-get install -y docker-compose-plugin
+        else
+          echo "No supported Docker Compose package was found in the configured APT sources." >&2
+          exit 1
+        fi
+        systemctl enable --now docker
+        usermod -aG docker ${username}
+      fi
+
+      if ${install_qemu_guest_agent}; then
+        apt-get update
+        apt-get install -y qemu-guest-agent
+        systemctl enable --now qemu-guest-agent
+      fi
+
+      logger -t kvm-disposable-ubuntu "Guest setup completed for ${hostname}"
+
+runcmd:
+  - [ bash, /usr/local/sbin/kvm-disposable-ubuntu-guest-setup.sh ]
+  - [ bash, -lc, "echo 'cloud-init completed on ${hostname}' | tee /etc/motd.d/99-kvm-disposable-ubuntu" ]
+
+final_message: |
+  cloud-init has completed on ${hostname}.
+  Review /var/log/cloud-init.log and /var/log/cloud-init-output.log for troubleshooting.
+  If Docker was installed, note that membership of the docker group is effectively root-equivalent inside the guest.
