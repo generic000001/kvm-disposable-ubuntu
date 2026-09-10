@@ -1,0 +1,13 @@
+vm_name                  = "disposable-ubuntu"
+vm_vcpus                 = 2
+vm_memory_mb             = 4096
+vm_disk_size_gb          = 32
+ubuntu_image_path        = "../images/ubuntu-26.04-server-cloudimg-amd64.img"
+username                 = "ubuntu"
+ssh_public_key_path      = "~/.ssh/kvm_disposable_lab.pub"
+timezone                 = "UTC"
+locale                   = "en_GB.UTF-8"
+install_docker           = true
+install_qemu_guest_agent = true
+libvirt_uri              = "qemu:///system"
+libvirt_network_name     = "default"
