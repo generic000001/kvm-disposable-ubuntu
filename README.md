@@ -33,8 +33,10 @@ Ubuntu 26.04 host
 │   └── verified Ubuntu source image cache
 ├── .cache/terraform/
 │   └── optional offline provider mirror
+├── /var/lib/libvirt/images/
+│   └── kvm-disposable-ubuntu/ (default active disk location)
 └── terraform/
-    ├── libvirt storage pool under terraform/.generated/pool
+    ├── libvirt pool definition
     ├── copied base image volume
     ├── copy-on-write overlay disk
     ├── cloud-init seed ISO
@@ -175,6 +177,9 @@ audit which released build was cached.
 
 The canonical guest image cache lives in `images/`. Terraform copies that image
 into its own managed libvirt pool before it creates the copy-on-write overlay.
+By default that pool lives at `/var/lib/libvirt/images/kvm-disposable-ubuntu`,
+resolved with `pathexpand()` and `abspath()`, so active libvirt volumes do not
+sit on the repository's `fuseblk` mount or under your private home directory.
 
 That design means:
 
@@ -279,7 +284,8 @@ make destroy
 ```
 
 This removes only Terraform-managed pool, volume, cloud-init, and domain
-resources.
+resources. The default managed pool directory remains
+`/var/lib/libvirt/images/kvm-disposable-ubuntu` until you explicitly remove it.
 
 ## VM rebuild workflow
 
@@ -291,8 +297,8 @@ This prompts before destruction and recreation.
 
 `make clean` removes only transient local working artefacts such as
 `.terraform/`, temporary plans, and `.tmp/`. It does **not** remove Terraform
-state and does **not** remove the managed libvirt pool data under
-`terraform/.generated/`.
+state and does **not** remove the managed libvirt pool data under the resolved
+`libvirt_pool_path` (default `/var/lib/libvirt/images/kvm-disposable-ubuntu`).
 
 ## Complete host-tool removal workflow
 
@@ -303,7 +309,8 @@ make remove-host-tools
 The removal script is conservative and interactive. It consults the local
 installation manifest, refuses to silently delete Terraform state while managed
 resources may still exist, and offers separate choices for caches, images, APT
-sources, keyrings, groups, and recorded packages.
+sources, keyrings, groups, recorded packages, and the recorded Terraform pool
+directory when it is empty and matches the default managed libvirt pool path.
 
 ## Terraform state explanation
 

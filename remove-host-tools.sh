@@ -24,6 +24,78 @@ append_retained() {
   retained_items+=("$1")
 }
 
+remove_recorded_terraform_pool_directories() {
+  local configured_path=""
+  local pool_dir resolved_pool_dir resolved_default_pool_dir
+  local -a pool_dirs=()
+  local path_value
+
+  resolved_default_pool_dir="$(repo_realpath "${DEFAULT_LIBVIRT_POOL_PATH}")"
+
+  if terraform_available; then
+    configured_path="$(terraform_configured_pool_path 2>/dev/null || true)"
+    if [[ -n "${configured_path}" ]]; then
+      pool_dirs+=("${configured_path}")
+    fi
+  fi
+
+  while IFS= read -r path_value; do
+    [[ -n "${path_value}" ]] || continue
+    pool_dirs+=("${path_value}")
+  done < <(jq_get_manifest_array terraform_pool_directories)
+
+  if [[ ${#pool_dirs[@]} -eq 0 ]]; then
+    append_retained "Terraform pool directory (no recorded project-managed pool path)"
+    return 0
+  fi
+
+  local -A seen=()
+  for pool_dir in "${pool_dirs[@]}"; do
+    [[ -n "${pool_dir}" ]] || continue
+    if [[ -n "${seen["${pool_dir}"]:-}" ]]; then
+      continue
+    fi
+    seen["${pool_dir}"]=1
+
+    if [[ "${pool_dir}" != /* ]]; then
+      append_retained "Terraform pool directory ${pool_dir}"
+      manual_attention+=("Recorded Terraform pool path is not absolute and was not removed: ${pool_dir}")
+      continue
+    fi
+
+    if [[ -L "${pool_dir}" ]]; then
+      append_retained "Terraform pool directory ${pool_dir}"
+      manual_attention+=("Recorded Terraform pool path is a symlink and was not removed: ${pool_dir}")
+      continue
+    fi
+
+    if [[ ! -d "${pool_dir}" ]]; then
+      append_retained "Terraform pool directory ${pool_dir} (not present)"
+      continue
+    fi
+
+    resolved_pool_dir="$(repo_realpath "${pool_dir}")"
+    if [[ "${resolved_pool_dir}" != "${resolved_default_pool_dir}" ]]; then
+      append_retained "Terraform pool directory ${pool_dir}"
+      manual_attention+=("Recorded Terraform pool directory does not match the default managed path ${DEFAULT_LIBVIRT_POOL_PATH} and was not auto-removed: ${pool_dir}")
+      continue
+    fi
+
+    if find "${pool_dir}" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+      append_retained "Terraform pool directory ${pool_dir}"
+      manual_attention+=("Terraform pool directory was not empty and was left in place: ${pool_dir}")
+      continue
+    fi
+
+    if confirm "Remove empty Terraform pool directory ${pool_dir}"; then
+      rmdir -- "${pool_dir}"
+      append_removed "Terraform pool directory ${pool_dir}"
+    else
+      append_retained "Terraform pool directory ${pool_dir}"
+    fi
+  done
+}
+
 maybe_destroy_terraform_resources() {
   local state_listing
 
@@ -155,6 +227,7 @@ main() {
   remove_path_if_confirmed "Cached checksum signature" "${IMAGES_DIR}/${DEFAULT_IMAGE_FILENAME}.SHA256SUMS.gpg"
   remove_path_if_confirmed "Cached image metadata" "${IMAGES_DIR}/${DEFAULT_IMAGE_FILENAME}.metadata.json"
 
+  remove_recorded_terraform_pool_directories
   remove_recorded_sources_and_keyrings
   remove_manifest_packages
   remove_group_memberships

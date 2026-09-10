@@ -109,6 +109,12 @@ variable "install_qemu_guest_agent" {
   default     = true
 }
 
+variable "start_vm" {
+  description = "Whether to start the VM immediately after libvirt defines it. Defaults to false temporarily for launch-context diagnosis."
+  type        = bool
+  default     = false
+}
+
 variable "libvirt_uri" {
   description = "Libvirt connection URI."
   type        = string
@@ -128,5 +134,16 @@ variable "libvirt_network_name" {
   validation {
     condition     = length(trimspace(var.libvirt_network_name)) > 0
     error_message = "libvirt_network_name must not be empty."
+  }
+}
+
+variable "libvirt_pool_path" {
+  description = "Absolute or home-relative host path for the Terraform-managed libvirt directory pool on a native Linux filesystem."
+  type        = string
+  default     = "/var/lib/libvirt/images/kvm-disposable-ubuntu"
+
+  validation {
+    condition     = length(trimspace(var.libvirt_pool_path)) > 0
+    error_message = "libvirt_pool_path must not be empty."
   }
 }

@@ -66,8 +66,13 @@ main() {
   curl --fail --location --silent --show-error "${DEFAULT_IMAGE_URL}" -o "${partial_image}"
 
   local expected_sum actual_sum
-  expected_sum="$(awk -v file="${DEFAULT_IMAGE_FILENAME}" '$2 == file { print $1 }' "${sums_path}")"
-  [[ -n "${expected_sum}" ]] || die "Could not find ${DEFAULT_IMAGE_FILENAME} in ${sums_path}"
+  local -a manifest_entry=()
+  mapfile -t manifest_entry < <(find_sha256_manifest_entry "${sums_path}" "${DEFAULT_IMAGE_FILENAME}") \
+    || die "Could not find a valid SHA256SUMS entry for ${DEFAULT_IMAGE_FILENAME} in ${sums_path}"
+  [[ ${#manifest_entry[@]} -eq 2 ]] || die "Invalid checksum parser result for ${DEFAULT_IMAGE_FILENAME}"
+  log "Matched checksum manifest entry: ${manifest_entry[0]}"
+  expected_sum="${manifest_entry[1]}"
+  log "Extracted checksum: ${expected_sum}"
   actual_sum="$(sha256sum "${partial_image}" | awk '{print $1}')"
   [[ "${expected_sum}" == "${actual_sum}" ]] || die "Checksum mismatch for downloaded image."
 

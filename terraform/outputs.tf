@@ -33,17 +33,22 @@ output "libvirt_network_name" {
   value       = var.libvirt_network_name
 }
 
+output "libvirt_pool_path" {
+  description = "Resolved absolute path of the Terraform-managed libvirt storage pool."
+  value       = libvirt_pool.vm_pool.target.path
+}
+
 output "disk_volume_information" {
   description = "Relevant disk and pool metadata."
   value = {
     pool_name        = libvirt_pool.vm_pool.name
     pool_path        = libvirt_pool.vm_pool.target.path
-    base_volume_name = libvirt_volume.base_image.name
-    base_volume_path = libvirt_volume.base_image.path
-    vm_volume_name   = libvirt_volume.vm_disk.name
-    vm_volume_path   = libvirt_volume.vm_disk.path
-    seed_volume_name = libvirt_volume.vm_seed_iso.name
-    seed_volume_path = libvirt_volume.vm_seed_iso.path
+    base_volume_name = libvirt_volume.base_image[local.managed_volume_permissions_revision].name
+    base_volume_path = libvirt_volume.base_image[local.managed_volume_permissions_revision].path
+    vm_volume_name   = libvirt_volume.vm_disk[local.managed_volume_permissions_revision].name
+    vm_volume_path   = libvirt_volume.vm_disk[local.managed_volume_permissions_revision].path
+    seed_volume_name = libvirt_volume.vm_seed_iso[local.managed_volume_permissions_revision].name
+    seed_volume_path = libvirt_volume.vm_seed_iso[local.managed_volume_permissions_revision].path
   }
 }
 

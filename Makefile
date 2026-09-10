@@ -43,6 +43,7 @@ offline-check: ## Verify that offline prerequisites are present locally
 
 init: ## Initialise Terraform in the terraform/ directory
 	@terraform -chdir=$(TERRAFORM_DIR) init -backend=false
+	@./scripts/record-terraform-pool-dir.sh >/dev/null
 
 fmt: ## Format Terraform files
 	@terraform -chdir=$(TERRAFORM_DIR) fmt
@@ -54,6 +55,7 @@ plan: ## Create an execution plan without applying it
 	@terraform -chdir=$(TERRAFORM_DIR) plan -out=tfplan
 
 create: ## Apply the Terraform configuration interactively
+	@./scripts/record-terraform-pool-dir.sh >/dev/null
 	@terraform -chdir=$(TERRAFORM_DIR) apply
 
 status: ## Show VM and environment status
@@ -69,6 +71,7 @@ cloud-init-status: ## Wait for or display cloud-init status
 	@./scripts/wait-for-cloud-init.sh $(ARGS)
 
 destroy: ## Destroy only Terraform-managed infrastructure interactively
+	@./scripts/record-terraform-pool-dir.sh >/dev/null
 	@terraform -chdir=$(TERRAFORM_DIR) destroy
 
 rebuild: ## Destroy and recreate the VM after explicit confirmation

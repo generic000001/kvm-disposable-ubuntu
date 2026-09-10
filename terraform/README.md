@@ -6,7 +6,8 @@ disposable Ubuntu VM managed through `qemu:///system`.
 Key choices:
 
 1. provider pin: exact version `dmacvicar/libvirt` `0.9.9`;
-2. one managed libvirt directory pool under `terraform/.generated/pool`;
+2. one managed libvirt directory pool on the standard libvirt images hierarchy,
+   defaulting to `/var/lib/libvirt/images/kvm-disposable-ubuntu`;
 3. one managed base-image copy inside that pool sourced from a verified local image;
 4. one copy-on-write overlay disk for the disposable guest;
 5. one cloud-init ISO generated from templates in `terraform/cloud-init/`.
@@ -21,6 +22,12 @@ artefacts locally:
 1. the canonical cached image in `../images/`, which Terraform never owns;
 2. a Terraform-managed copy inside the libvirt pool, which exists so the guest
    can use a libvirt-managed backing file under `qemu:///system`.
+
+The pool path is configurable through `libvirt_pool_path`, and the Terraform
+configuration resolves it with `abspath(pathexpand(...))` before passing it to
+`libvirt_pool.target.path`. The default keeps active libvirt volumes off the
+repository's `fuseblk` mount while remaining inside Ubuntu's standard
+AppArmor-permitted libvirt storage hierarchy.
 
 ## Offline provider mirror
 
