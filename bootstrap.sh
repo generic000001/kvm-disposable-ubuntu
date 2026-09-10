@@ -134,12 +134,16 @@ enable_libvirt_services() {
 }
 
 ensure_default_network() {
+  local net_info
   require_sudo_once
-  if virsh -c qemu:///system net-info default >/dev/null 2>&1; then
-    if ! virsh -c qemu:///system net-info default | grep -Fq 'Active:         yes'; then
+
+  if net_info="$(sudo virsh -c qemu:///system net-info default 2>/dev/null)"; then
+    if ! grep -Eq '^Active:[[:space:]]+yes$' <<<"${net_info}"; then
       sudo virsh -c qemu:///system net-start default
     fi
-    sudo virsh -c qemu:///system net-autostart default
+    if ! grep -Eq '^Autostart:[[:space:]]+yes$' <<<"${net_info}"; then
+      sudo virsh -c qemu:///system net-autostart default
+    fi
     return 0
   fi
 
@@ -147,6 +151,32 @@ ensure_default_network() {
   sudo virsh -c qemu:///system net-define /usr/share/libvirt/networks/default.xml
   sudo virsh -c qemu:///system net-start default
   sudo virsh -c qemu:///system net-autostart default
+}
+
+ensure_libvirt_pool_directory() {
+  local qemu_user kvm_group pool_parent pool_parent_state
+  qemu_user="$(ubuntu_libvirt_qemu_user)"
+  kvm_group="$(ubuntu_kvm_group)"
+  ensure_user_in_group "${qemu_user}" "${kvm_group}"
+  record_libvirt_runtime_identity
+
+  pool_parent="$(dirname -- "${DEFAULT_LIBVIRT_POOL_PATH}")"
+  [[ "${pool_parent}" == "${DEFAULT_LIBVIRT_POOL_PARENT}" ]] || die "Unexpected libvirt pool parent path: ${pool_parent}"
+
+  [[ -d "${DEFAULT_LIBVIRT_POOL_PARENT}" ]] || die "Expected system-managed libvirt images directory missing: ${DEFAULT_LIBVIRT_POOL_PARENT}"
+  pool_parent_state="$(path_owner_group_mode "${DEFAULT_LIBVIRT_POOL_PARENT}")"
+  manifest_set_value "libvirt_pool_parent_state" "${pool_parent_state}"
+
+  require_sudo_once
+  if ! sudo -u "${qemu_user}" test -x "${DEFAULT_LIBVIRT_POOL_PARENT}"; then
+    die "Detected libvirt QEMU runtime identity ${qemu_user} cannot traverse ${DEFAULT_LIBVIRT_POOL_PARENT} (${pool_parent_state}). Refusing to modify the system-managed parent directory."
+  fi
+
+  sudo install -d -o "${qemu_user}" -g "${kvm_group}" -m 0710 "${DEFAULT_LIBVIRT_POOL_PATH}"
+  sudo -u "${qemu_user}" test -x "${DEFAULT_LIBVIRT_POOL_PATH}" \
+    || die "Detected libvirt QEMU runtime identity ${qemu_user} cannot traverse the managed pool directory ${DEFAULT_LIBVIRT_POOL_PATH} after preparation."
+  manifest_add_unique_string "directories_created" "${DEFAULT_LIBVIRT_POOL_PATH}"
+  record_terraform_pool_directory "${DEFAULT_LIBVIRT_POOL_PATH}"
 }
 
 validate_host() {
@@ -208,6 +238,7 @@ main() {
   ensure_user_groups
   enable_libvirt_services
   ensure_default_network
+  ensure_libvirt_pool_directory
 
   if [[ "${GROUP_REFRESH_REQUIRED}" -eq 1 ]] || group_refresh_required || ! current_session_in_group libvirt; then
     sudo virsh -c qemu:///system uri >/dev/null

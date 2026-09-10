@@ -4,9 +4,11 @@ set -Eeuo pipefail
 COMMON_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${COMMON_DIR}/.." && pwd)"
 XDG_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
 PROJECT_SLUG="kvm-disposable-ubuntu"
 STATE_DIR="${XDG_STATE_HOME}/${PROJECT_SLUG}"
+DATA_DIR="${XDG_DATA_HOME}/${PROJECT_SLUG}"
 MANIFEST_PATH="${STATE_DIR}/install-manifest.json"
 GROUP_REFRESH_MARKER="${STATE_DIR}/session-group-refresh-required"
 CACHE_DIR="${REPO_ROOT}/.cache"
@@ -14,6 +16,8 @@ TMP_DIR="${REPO_ROOT}/.tmp"
 DIST_DIR="${REPO_ROOT}/dist"
 IMAGES_DIR="${REPO_ROOT}/images"
 TERRAFORM_DIR="${REPO_ROOT}/terraform"
+DEFAULT_LIBVIRT_POOL_PARENT="/var/lib/libvirt/images"
+DEFAULT_LIBVIRT_POOL_PATH="${DEFAULT_LIBVIRT_POOL_PARENT}/${PROJECT_SLUG}"
 DEFAULT_IMAGE_RELEASE="26.04"
 DEFAULT_IMAGE_CODENAME="resolute"
 DEFAULT_IMAGE_ARCH="amd64"
@@ -56,7 +60,8 @@ ensure_repo_layout() {
 }
 
 create_local_dirs() {
-  mkdir -p -- "${STATE_DIR}" "${CACHE_DIR}" "${TMP_DIR}" "${DIST_DIR}"
+  ensure_private_dir "${STATE_DIR}"
+  mkdir -p -- "${CACHE_DIR}" "${TMP_DIR}" "${DIST_DIR}"
 }
 
 load_os_release() {
@@ -76,6 +81,11 @@ repo_realpath() {
   else
     python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${target}"
   fi
+}
+
+path_owner_group_mode() {
+  local target="${1:?path required}"
+  stat -Lc 'owner=%U group=%G mode=%a path=%n' "${target}"
 }
 
 ensure_within_repo() {
@@ -107,6 +117,12 @@ manifest_init() {
   "group_membership_changes": [],
   "services_enabled": [],
   "directories_created": [],
+  "terraform_pool_directories": [],
+  "libvirt_pool_parent_state": null,
+  "detected_libvirt_qemu_user": null,
+  "detected_libvirt_qemu_uid": null,
+  "detected_kvm_group": null,
+  "detected_kvm_gid": null,
   "caches_created": [],
   "selected_image_version": null,
   "selected_provider_version": null,
@@ -196,6 +212,11 @@ record_cache_dir() {
   manifest_add_unique_string "caches_created" "${path}"
 }
 
+record_terraform_pool_directory() {
+  local path="${1:?Terraform pool path required}"
+  manifest_add_unique_string "terraform_pool_directories" "${path}"
+}
+
 current_user_name() {
   if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
     printf '%s\n' "${SUDO_USER}"
@@ -208,6 +229,16 @@ current_user_home() {
   local user_name
   user_name="$(current_user_name)"
   getent passwd "${user_name}" | cut -d: -f6
+}
+
+user_uid() {
+  local user_name="${1:?user required}"
+  getent passwd "${user_name}" | cut -d: -f3
+}
+
+group_gid() {
+  local group_name="${1:?group required}"
+  getent group "${group_name}" | cut -d: -f3
 }
 
 current_user_in_group() {
@@ -240,8 +271,105 @@ terraform_available() {
   command -v terraform >/dev/null 2>&1
 }
 
+ubuntu_libvirt_qemu_user() {
+  local configured_user=""
+  if [[ -r /etc/libvirt/qemu.conf ]]; then
+    configured_user="$(awk -F'"' '/^[[:space:]]*user[[:space:]]*=/ {print $2; exit}' /etc/libvirt/qemu.conf)"
+  fi
+
+  if [[ -n "${configured_user}" ]]; then
+    getent passwd "${configured_user}" >/dev/null 2>&1 || die "Configured libvirt QEMU user does not exist: ${configured_user}"
+    printf '%s\n' "${configured_user}"
+    return 0
+  fi
+
+  getent passwd libvirt-qemu >/dev/null 2>&1 || die "Expected Ubuntu libvirt QEMU user libvirt-qemu was not found."
+  printf '%s\n' "libvirt-qemu"
+}
+
+ubuntu_kvm_group() {
+  getent group kvm >/dev/null 2>&1 || die "Expected Ubuntu KVM group kvm was not found."
+  printf '%s\n' "kvm"
+}
+
+ensure_user_in_group() {
+  local user_name="${1:?user required}"
+  local group_name="${2:?group required}"
+  id -nG "${user_name}" | tr ' ' '\n' | grep -Fxq "${group_name}" \
+    || die "User ${user_name} is not a member of required group ${group_name}."
+}
+
+record_libvirt_runtime_identity() {
+  local qemu_user kvm_group qemu_uid kvm_gid
+  qemu_user="$(ubuntu_libvirt_qemu_user)"
+  kvm_group="$(ubuntu_kvm_group)"
+  ensure_user_in_group "${qemu_user}" "${kvm_group}"
+
+  qemu_uid="$(user_uid "${qemu_user}")"
+  kvm_gid="$(group_gid "${kvm_group}")"
+  [[ -n "${qemu_uid}" ]] || die "Could not resolve UID for ${qemu_user}"
+  [[ -n "${kvm_gid}" ]] || die "Could not resolve GID for ${kvm_group}"
+
+  manifest_set_value "detected_libvirt_qemu_user" "${qemu_user}"
+  manifest_set_value "detected_libvirt_qemu_uid" "${qemu_uid}"
+  manifest_set_value "detected_kvm_group" "${kvm_group}"
+  manifest_set_value "detected_kvm_gid" "${kvm_gid}"
+}
+
+terraform_configured_pool_path() {
+  local console_output resolved_path
+  ensure_command terraform
+
+  if ! console_output="$(printf 'local.pool_path\n' | terraform -chdir="${TERRAFORM_DIR}" console -no-color 2>/dev/null)"; then
+    terraform -chdir="${TERRAFORM_DIR}" init -backend=false >/dev/null
+    console_output="$(printf 'local.pool_path\n' | terraform -chdir="${TERRAFORM_DIR}" console -no-color 2>/dev/null)" \
+      || die "Could not resolve local.pool_path from the Terraform configuration."
+  fi
+
+  resolved_path="${console_output##*$'\n'}"
+  resolved_path="${resolved_path%$'\r'}"
+  resolved_path="${resolved_path#\"}"
+  resolved_path="${resolved_path%\"}"
+
+  [[ -n "${resolved_path}" ]] || die "Terraform local.pool_path resolved to an empty value."
+  [[ "${resolved_path}" = /* ]] || die "Terraform local.pool_path must resolve to an absolute path, got: ${resolved_path}"
+
+  printf '%s\n' "${resolved_path}"
+}
+
 virsh_available() {
   command -v virsh >/dev/null 2>&1
+}
+
+ensure_private_dir() {
+  local dir_path="${1:?directory path required}"
+  local mode
+  [[ ! -e "${dir_path}" || -d "${dir_path}" ]] || die "Expected directory path but found non-directory: ${dir_path}"
+  mkdir -p -- "${dir_path}"
+  chmod go-rwx -- "${dir_path}"
+  mode="$(stat -c '%a' "${dir_path}")"
+  [[ "${mode: -2}" == "00" ]] || die "Failed to secure directory permissions for ${dir_path}; current mode is ${mode}"
+}
+
+ubuntu_cloud_image_gnupg_home() {
+  printf '%s\n' "${STATE_DIR}/gnupg/ubuntu-cloud-images"
+}
+
+find_sha256_manifest_entry() {
+  local sums_path="${1:?checksum manifest path required}"
+  local file_name="${2:?filename required}"
+  local line
+
+  [[ -f "${sums_path}" ]] || die "Checksum manifest missing: ${sums_path}"
+
+  while IFS= read -r line; do
+    [[ "${line}" =~ ^([[:xdigit:]]{64})[[:space:]]+\*?(.*)$ ]] || continue
+    [[ "${BASH_REMATCH[2]}" == "${file_name}" ]] || continue
+    printf '%s\n%s\n' "${line}" "${BASH_REMATCH[1]}"
+    return 0
+  done < "${sums_path}"
+
+  return 1
 }
 
 jq_get_manifest_array() {

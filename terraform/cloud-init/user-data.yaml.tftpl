@@ -7,7 +7,7 @@ disable_root: true
 ssh_pwauth: false
 locale: ${locale}
 timezone: ${timezone}
-package_update: ${install_docker || install_qemu_guest_agent}
+package_update: false
 package_upgrade: false
 
 users:
@@ -32,25 +32,35 @@ write_files:
       set -Eeuo pipefail
 
       export DEBIAN_FRONTEND=noninteractive
+      packages=()
 
       if ${install_docker}; then
-        apt-get update
-        apt-get install -y docker.io
+        packages+=(docker.io)
         if apt-cache show docker-compose-v2 >/dev/null 2>&1; then
-          apt-get install -y docker-compose-v2
+          packages+=(docker-compose-v2)
         elif apt-cache show docker-compose-plugin >/dev/null 2>&1; then
-          apt-get install -y docker-compose-plugin
+          packages+=(docker-compose-plugin)
         else
           echo "No supported Docker Compose package was found in the configured APT sources." >&2
           exit 1
         fi
+      fi
+
+      if ${install_qemu_guest_agent}; then
+        packages+=(qemu-guest-agent)
+      fi
+
+      if [[ $${#packages[@]} -gt 0 ]]; then
+        apt-get update
+        apt-get install -y "$${packages[@]}"
+      fi
+
+      if ${install_docker}; then
         systemctl enable --now docker
         usermod -aG docker ${username}
       fi
 
       if ${install_qemu_guest_agent}; then
-        apt-get update
-        apt-get install -y qemu-guest-agent
         systemctl enable --now qemu-guest-agent
       fi
 

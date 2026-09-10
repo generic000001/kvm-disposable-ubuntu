@@ -8,13 +8,24 @@ resource "libvirt_pool" "vm_pool" {
 }
 
 resource "libvirt_volume" "base_image" {
+  for_each = local.managed_volume_permission_instances
+
   name = local.base_volume_name
   pool = libvirt_pool.vm_pool.name
+
+  lifecycle {
+    replace_triggered_by = [libvirt_pool.vm_pool.target.path]
+    precondition {
+      condition     = local.libvirt_volume_owner_uid != "" && local.libvirt_volume_group_gid != ""
+      error_message = "Libvirt runtime UID/GID not recorded in ~/.local/state/kvm-disposable-ubuntu/install-manifest.json. Run bootstrap.sh or scripts/record-libvirt-runtime-identity.sh."
+    }
+  }
 
   target = {
     format = {
       type = "qcow2"
     }
+    permissions = each.value
   }
 
   create = {
@@ -27,19 +38,33 @@ resource "libvirt_volume" "base_image" {
 }
 
 resource "libvirt_volume" "vm_disk" {
+  for_each = local.managed_volume_permission_instances
+
   name     = local.guest_volume_name
   pool     = libvirt_pool.vm_pool.name
   capacity = local.vm_disk_bytes
+
+  lifecycle {
+    replace_triggered_by = [
+      libvirt_pool.vm_pool.target.path,
+      libvirt_volume.base_image,
+    ]
+    precondition {
+      condition     = local.libvirt_volume_owner_uid != "" && local.libvirt_volume_group_gid != ""
+      error_message = "Libvirt runtime UID/GID not recorded in ~/.local/state/kvm-disposable-ubuntu/install-manifest.json. Run bootstrap.sh or scripts/record-libvirt-runtime-identity.sh."
+    }
+  }
 
   target = {
     format = {
       type = "qcow2"
     }
+    permissions = each.value
   }
 
   backing_store = {
     # The guest disk is a qcow2 overlay backed by the managed base copy above.
-    path = libvirt_volume.base_image.path
+    path = libvirt_volume.base_image[local.managed_volume_permissions_revision].path
     format = {
       type = "qcow2"
     }
@@ -67,14 +92,27 @@ resource "libvirt_cloudinit_disk" "vm_seed" {
 }
 
 resource "libvirt_volume" "vm_seed_iso" {
-  name   = local.seed_volume_name
-  pool   = libvirt_pool.vm_pool.name
-  format = "raw"
+  for_each = local.managed_volume_permission_instances
+
+  name = local.seed_volume_name
+  pool = libvirt_pool.vm_pool.name
+
+  lifecycle {
+    replace_triggered_by = [libvirt_pool.vm_pool.target.path]
+    precondition {
+      condition     = local.libvirt_volume_owner_uid != "" && local.libvirt_volume_group_gid != ""
+      error_message = "Libvirt runtime UID/GID not recorded in ~/.local/state/kvm-disposable-ubuntu/install-manifest.json. Run bootstrap.sh or scripts/record-libvirt-runtime-identity.sh."
+    }
+  }
 
   create = {
     content = {
       url = libvirt_cloudinit_disk.vm_seed.path
     }
+  }
+
+  target = {
+    permissions = each.value
   }
 }
 
@@ -87,25 +125,35 @@ resource "libvirt_domain" "vm" {
   vcpu        = var.vm_vcpus
   type        = "kvm"
   autostart   = false
-  running     = true
+  running     = var.start_vm
   on_reboot   = "restart"
   on_crash    = "destroy"
   on_poweroff = "destroy"
+
+  lifecycle {
+    replace_triggered_by = [
+      libvirt_volume.vm_disk,
+      libvirt_volume.vm_seed_iso,
+    ]
+  }
 
   os = {
     type         = "hvm"
     type_arch    = "x86_64"
     type_machine = "q35"
-    boot_devices = ["hd"]
+    boot_devices = [
+      {
+        dev = "hd"
+      }
+    ]
   }
 
   devices = {
     disks = [
       {
         source = {
-          volume = {
-            pool   = libvirt_volume.vm_disk.pool
-            volume = libvirt_volume.vm_disk.name
+          file = {
+            file = libvirt_volume.vm_disk[local.volume_permissions_revision].path
           }
         }
         target = {
@@ -119,9 +167,8 @@ resource "libvirt_domain" "vm" {
       {
         device = "cdrom"
         source = {
-          volume = {
-            pool   = libvirt_volume.vm_seed_iso.pool
-            volume = libvirt_volume.vm_seed_iso.name
+          file = {
+            file = libvirt_volume.vm_seed_iso[local.volume_permissions_revision].path
           }
         }
         target = {
@@ -155,9 +202,6 @@ resource "libvirt_domain" "vm" {
 
     serials = [
       {
-        source = {
-          pty = {}
-        }
         target = {
           port = 0
           type = "isa-serial"
@@ -167,9 +211,6 @@ resource "libvirt_domain" "vm" {
 
     consoles = [
       {
-        source = {
-          pty = {}
-        }
         target = {
           port = 0
           type = "serial"
@@ -179,9 +220,6 @@ resource "libvirt_domain" "vm" {
 
     channels = var.install_qemu_guest_agent ? [
       {
-        source = {
-          pty = {}
-        }
         target = {
           virt_io = {
             name = "org.qemu.guest_agent.0"
