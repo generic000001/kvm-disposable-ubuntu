@@ -18,6 +18,7 @@ main() {
   report_line "Terraform state" "$(terraform_state_present && printf present || printf missing)"
   report_line "VM name" "${vm_name}"
   report_line "libvirt URI" "${uri}"
+  "${SCRIPT_DIR}/deployment-ownership.sh" status
 
   if virsh_available && virsh -c "${uri}" dominfo "${vm_name}" >/dev/null 2>&1; then
     domain_state="$(virsh -c "${uri}" domstate "${vm_name}" | tr -d '\r')"

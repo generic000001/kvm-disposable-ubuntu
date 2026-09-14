@@ -110,6 +110,8 @@ These targets create, destroy, and recreate the disposable VM only:
 ```bash
 make create
 make destroy
+make adopt
+make destroy-existing
 make rebuild
 make status
 make ssh
@@ -126,6 +128,27 @@ make remove-host-tools
 ```
 
 Destroying the VM does **not** uninstall KVM, libvirt, or Terraform.
+
+### Existing deployment ownership
+
+`make create` refuses to proceed when any of the fixed deployment resources
+(the pool, domain, or managed volumes) already exists in libvirt but is not
+fully represented in the current Terraform state. This prevents Terraform
+from silently replacing or destroying resources created by another state.
+
+Use `make status` to see the ownership diagnostics. Choose one explicit
+recovery path:
+
+```bash
+make adopt            # import the complete existing deployment into this state
+make destroy-existing # permanently remove it after an interactive confirmation
+```
+
+`make adopt` requires the complete fixed deployment to exist and imports it
+without deleting resources; review `make plan` before applying. The
+`destroy-existing` target never removes a pool containing non-deployment
+volumes and does not modify Terraform state. Do not use either target unless
+you have confirmed that the resources belong to this checkout.
 
 ## Host bootstrap instructions
 
