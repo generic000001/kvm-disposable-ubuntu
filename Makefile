@@ -55,6 +55,7 @@ plan: ## Create an execution plan without applying it
 	@terraform -chdir=$(TERRAFORM_DIR) plan -out=tfplan
 
 create: ## Apply the Terraform configuration interactively
+	@./scripts/preflight-image-cache.sh
 	@./scripts/record-terraform-pool-dir.sh >/dev/null
 	@terraform -chdir=$(TERRAFORM_DIR) apply
 
