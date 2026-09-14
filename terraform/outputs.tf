@@ -35,14 +35,14 @@ output "libvirt_network_name" {
 
 output "libvirt_pool_path" {
   description = "Resolved absolute path of the Terraform-managed libvirt storage pool."
-  value       = libvirt_pool.vm_pool.target.path
+  value       = try(libvirt_pool.vm_pool.target.path, local.pool_path)
 }
 
 output "disk_volume_information" {
   description = "Relevant disk and pool metadata."
   value = {
     pool_name        = libvirt_pool.vm_pool.name
-    pool_path        = libvirt_pool.vm_pool.target.path
+    pool_path        = try(libvirt_pool.vm_pool.target.path, local.pool_path)
     base_volume_name = libvirt_volume.base_image[local.managed_volume_permissions_revision].name
     base_volume_path = libvirt_volume.base_image[local.managed_volume_permissions_revision].path
     vm_volume_name   = libvirt_volume.vm_disk[local.managed_volume_permissions_revision].name

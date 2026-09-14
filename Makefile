@@ -9,7 +9,7 @@ ifdef OFFLINE
 export TF_CLI_CONFIG_FILE := $(OFFLINE_TFRC)
 endif
 
-.PHONY: help check bootstrap download-image verify-image prepare-offline offline-check init fmt validate plan create status ip ssh cloud-init-status destroy rebuild clean purge-cache export-offline-bundle verify-offline-bundle remove-host-tools lint
+.PHONY: help check bootstrap download-image verify-image prepare-offline offline-check init fmt validate plan create status ip ssh cloud-init-status destroy adopt destroy-existing rebuild clean purge-cache export-offline-bundle verify-offline-bundle remove-host-tools lint
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -55,6 +55,7 @@ plan: ## Create an execution plan without applying it
 	@terraform -chdir=$(TERRAFORM_DIR) plan -out=tfplan
 
 create: ## Apply the Terraform configuration interactively
+	@./scripts/deployment-ownership.sh check
 	@./scripts/preflight-image-cache.sh
 	@./scripts/record-terraform-pool-dir.sh >/dev/null
 	@terraform -chdir=$(TERRAFORM_DIR) apply
@@ -82,6 +83,12 @@ clean: ## Remove local generated project artefacts without touching Terraform st
 	@rm -rf $(TERRAFORM_DIR)/.terraform
 	@rm -f $(TERRAFORM_DIR)/tfplan $(TERRAFORM_DIR)/*.log
 	@rm -rf $(REPO_ROOT)/.tmp
+
+adopt: ## Import existing fixed libvirt deployment resources into Terraform state
+	@./scripts/deployment-ownership.sh adopt
+
+destroy-existing: ## Explicitly destroy existing fixed libvirt resources not fully owned by Terraform
+	@./scripts/deployment-ownership.sh destroy-existing
 
 purge-cache: ## Remove local caches and cached images after confirmation
 	@read -r -p "Purge provider caches and cached images from this repository [y/N]: " response; [[ "$$response" =~ ^[Yy]([Ee][Ss])?$$ ]] || exit 1; rm -rf $(REPO_ROOT)/.cache $(REPO_ROOT)/images/*.img $(REPO_ROOT)/images/*.SHA256SUMS $(REPO_ROOT)/images/*.SHA256SUMS.gpg $(REPO_ROOT)/images/*.metadata.json $(REPO_ROOT)/images/*.qcow2
