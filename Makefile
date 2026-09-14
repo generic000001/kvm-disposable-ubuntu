@@ -9,7 +9,7 @@ ifdef OFFLINE
 export TF_CLI_CONFIG_FILE := $(OFFLINE_TFRC)
 endif
 
-.PHONY: help check bootstrap download-image verify-image prepare-offline offline-check init fmt validate plan create status ip ssh cloud-init-status destroy adopt destroy-existing rebuild clean purge-cache export-offline-bundle verify-offline-bundle remove-host-tools lint
+.PHONY: help check test bootstrap download-image verify-image prepare-offline offline-check init fmt validate plan create status ip ssh cloud-init-status destroy adopt destroy-existing rebuild clean purge-cache export-offline-bundle verify-offline-bundle remove-host-tools lint
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_.-]+:.*## / {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -22,6 +22,9 @@ check: ## Run repository checks without provisioning
 	@if command -v terraform >/dev/null 2>&1; then terraform -chdir=$(TERRAFORM_DIR) init -backend=false >/dev/null; else echo "[WARN] terraform not installed; skipping terraform init -backend=false"; fi
 	@if command -v terraform >/dev/null 2>&1; then terraform -chdir=$(TERRAFORM_DIR) validate; else echo "[WARN] terraform not installed; skipping terraform validate"; fi
 	@if command -v python3 >/dev/null 2>&1; then python3 -c 'import importlib.util, pathlib, sys; spec = importlib.util.find_spec("yaml"); sys.exit(print("[WARN] PyYAML not installed; skipping YAML validation") or 0) if spec is None else None; yaml = __import__("yaml"); [yaml.safe_load(pathlib.Path(path).read_text()) for path in ("terraform/cloud-init/meta-data.yaml.tftpl", "terraform/cloud-init/network-config.yaml.tftpl")]; print("[INFO] Static YAML validation passed")'; else echo "[WARN] python3 not installed; skipping YAML validation"; fi
+
+test: ## Run repository regression tests
+	@./tests/create-ownership-guard.sh
 
 bootstrap: ## Install and configure host tooling idempotently
 	@./bootstrap.sh
