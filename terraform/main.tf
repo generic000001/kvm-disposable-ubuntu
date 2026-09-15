@@ -177,9 +177,10 @@ resource "libvirt_domain" "vm" {
       libvirt_volume.vm_disk,
       libvirt_volume.vm_seed_iso,
     ]
-    # These values are allocated by libvirt at runtime. They are absent from
-    # configuration and can change when the domain is redefined, so retain
-    # infrastructure drift detection for every other device attribute.
+    # Import refreshes libvirt XML defaults and unit conversions that are
+    # semantically equivalent to this configuration. Runtime PTY paths and
+    # network port IDs are allocated by libvirt and can change when the domain
+    # is redefined; retain drift detection for other device attributes.
     ignore_changes = [
       clock,
       cpu,

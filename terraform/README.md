@@ -37,9 +37,12 @@ configured target is still used when Terraform creates a new pool.
 The same provider also refreshes imported volumes without their declarative
 create source and with computed allocation, target, and backing-store metadata.
 Imported domains contain libvirt-generated XML defaults and unit
-normalizations. The resource lifecycle ignores only those importer/computed
-fields; pool-path, volume-permission, backing-volume, and explicit replacement
-triggers remain active for normal creation and intentional replacement.
+normalizations. The network interface `source.network.port_id` is a
+libvirt-generated runtime identifier rather than configuration; its exact
+nested path is ignored because it can change when the domain is redefined.
+Other device attributes remain managed. Pool-path, volume-permission,
+backing-volume, and explicit replacement triggers remain active for normal
+creation and intentional replacement.
 
 ## Adoption runtime metadata
 
