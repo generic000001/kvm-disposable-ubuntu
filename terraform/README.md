@@ -29,6 +29,18 @@ configuration resolves it with `abspath(pathexpand(...))` before passing it to
 repository's `fuseblk` mount while remaining inside Ubuntu's standard
 AppArmor-permitted libvirt storage hierarchy.
 
+The pinned provider imports an existing directory pool by UUID but may refresh
+its `target` block as null. Because libvirt storage pools cannot be updated,
+the pool ignores changes to that provider-managed block after import; the
+configured target is still used when Terraform creates a new pool.
+
+The same provider also refreshes imported volumes without their declarative
+create source and with computed allocation, target, and backing-store metadata.
+Imported domains contain libvirt-generated XML defaults and unit
+normalizations. The resource lifecycle ignores only those importer/computed
+fields; pool-path, volume-permission, backing-volume, and explicit replacement
+triggers remain active for normal creation and intentional replacement.
+
 ## Offline provider mirror
 
 `make prepare-offline` populates `.cache/terraform/provider-mirror/` and writes

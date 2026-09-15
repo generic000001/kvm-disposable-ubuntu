@@ -289,6 +289,12 @@ make create
 Use `make OFFLINE=1 init` and `make OFFLINE=1 plan` after `make prepare-offline`
 if you want Terraform to use the mirrored provider only.
 
+`make create` starts the VM by default so that cloud-init can run, the guest
+can acquire a DHCP lease, and `make ip`/`make ssh` can be used immediately
+after boot. To intentionally define the VM without starting it, set
+`start_vm = false` in `terraform/terraform.tfvars` or pass
+`-var='start_vm=false'` to Terraform.
+
 ## SSH workflow
 
 ```bash

@@ -5,6 +5,13 @@ resource "libvirt_pool" "vm_pool" {
   target = {
     path = local.pool_path
   }
+
+  lifecycle {
+    # libvirt provider 0.9.9 imports directory pools without refreshing the
+    # target block. Pools cannot be updated, so avoid a perpetual update after
+    # adoption while retaining the target for newly created pools.
+    ignore_changes = [target]
+  }
 }
 
 resource "libvirt_volume" "base_image" {
@@ -15,6 +22,18 @@ resource "libvirt_volume" "base_image" {
 
   lifecycle {
     replace_triggered_by = [libvirt_pool.vm_pool.target.path]
+    # Imports omit the create source and refresh provider-computed volume
+    # metadata. The permission revision and pool path still force replacement.
+    ignore_changes = [
+      allocation,
+      allocation_unit,
+      capacity,
+      capacity_unit,
+      create,
+      physical_unit,
+      target,
+      type,
+    ]
     precondition {
       condition     = local.libvirt_volume_owner_uid != "" && local.libvirt_volume_group_gid != ""
       error_message = "Libvirt runtime UID/GID not recorded in ~/.local/state/kvm-disposable-ubuntu/install-manifest.json. Run bootstrap.sh or scripts/record-libvirt-runtime-identity.sh."
@@ -48,6 +67,17 @@ resource "libvirt_volume" "vm_disk" {
     replace_triggered_by = [
       libvirt_pool.vm_pool.target.path,
       libvirt_volume.base_image,
+    ]
+    # The importer adds backing-store and target metadata that is not part of
+    # the declared overlay configuration. Base-volume changes still replace it.
+    ignore_changes = [
+      allocation,
+      allocation_unit,
+      capacity_unit,
+      physical_unit,
+      backing_store,
+      target,
+      type,
     ]
     precondition {
       condition     = local.libvirt_volume_owner_uid != "" && local.libvirt_volume_group_gid != ""
@@ -99,6 +129,18 @@ resource "libvirt_volume" "vm_seed_iso" {
 
   lifecycle {
     replace_triggered_by = [libvirt_pool.vm_pool.target.path]
+    # Imports omit the create source and refresh provider-computed volume
+    # metadata. The permission revision and pool path still force replacement.
+    ignore_changes = [
+      allocation,
+      allocation_unit,
+      capacity,
+      capacity_unit,
+      create,
+      physical_unit,
+      target,
+      type,
+    ]
     precondition {
       condition     = local.libvirt_volume_owner_uid != "" && local.libvirt_volume_group_gid != ""
       error_message = "Libvirt runtime UID/GID not recorded in ~/.local/state/kvm-disposable-ubuntu/install-manifest.json. Run bootstrap.sh or scripts/record-libvirt-runtime-identity.sh."
@@ -134,6 +176,19 @@ resource "libvirt_domain" "vm" {
     replace_triggered_by = [
       libvirt_volume.vm_disk,
       libvirt_volume.vm_seed_iso,
+    ]
+    # Import refreshes libvirt XML defaults and unit conversions that are
+    # semantically equivalent to this configuration.
+    ignore_changes = [
+      clock,
+      cpu,
+      current_memory,
+      current_memory_unit,
+      devices,
+      memory,
+      memory_unit,
+      os,
+      vcpu_placement,
     ]
   }
 
