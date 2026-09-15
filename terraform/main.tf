@@ -178,13 +178,15 @@ resource "libvirt_domain" "vm" {
       libvirt_volume.vm_seed_iso,
     ]
     # Import refreshes libvirt XML defaults and unit conversions that are
-    # semantically equivalent to this configuration.
+    # semantically equivalent to this configuration. The network port ID is
+    # allocated by libvirt and can change when the domain is redefined.
     ignore_changes = [
       clock,
       cpu,
       current_memory,
       current_memory_unit,
       devices,
+      devices.interfaces[0].source.network.port_id,
       memory,
       memory_unit,
       os,
