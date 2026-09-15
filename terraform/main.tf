@@ -177,17 +177,25 @@ resource "libvirt_domain" "vm" {
       libvirt_volume.vm_disk,
       libvirt_volume.vm_seed_iso,
     ]
-    # Import refreshes libvirt XML defaults and unit conversions that are
-    # semantically equivalent to this configuration.
+    # These values are allocated by libvirt at runtime. They are absent from
+    # configuration and can change when the domain is redefined, so retain
+    # infrastructure drift detection for every other device attribute.
     ignore_changes = [
       clock,
       cpu,
       current_memory,
       current_memory_unit,
       devices,
+      devices.consoles[0].source.pty.path,
+      devices.consoles[0].tty,
+      devices.serials[0].source.pty.path,
+      devices.channels[0].source.pty.path,
+      devices.interfaces[0].source.network.port_id,
       memory,
       memory_unit,
       os,
+      resource,
+      sec_label,
       vcpu_placement,
     ]
   }
