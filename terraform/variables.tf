@@ -110,9 +110,9 @@ variable "install_qemu_guest_agent" {
 }
 
 variable "start_vm" {
-  description = "Whether to start the VM immediately after libvirt defines it. Defaults to false temporarily for launch-context diagnosis."
+  description = "Whether to start the VM immediately after libvirt defines it. Set to false for launch diagnostics or other intentional stopped-VM workflows."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "libvirt_uri" {
