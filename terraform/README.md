@@ -44,6 +44,27 @@ Other device attributes remain managed. Pool-path, volume-permission,
 backing-volume, and explicit replacement triggers remain active for normal
 creation and intentional replacement.
 
+## Adoption runtime metadata
+
+The following comparison is representative of the adoption state and a
+subsequent refresh. The configured values are omitted because Terraform only
+declares the device targets and network name; libvirt supplies these runtime
+metadata fields after the domain is defined.
+
+| Attribute | Configured? | Import value | Post-apply value | Runtime metadata? |
+| --- | --- | --- | --- | --- |
+| `devices.consoles[0].source.pty.path` | No | `/dev/pts/0` | `/dev/pts/1` | Yes |
+| `devices.consoles[0].tty` | No | `/dev/pts/0` | `/dev/pts/1` | Yes |
+| `devices.serials[0].source.pty.path` | No | `/dev/pts/0` | `/dev/pts/1` | Yes |
+| `devices.channels[0].source.pty.path` | No | `/dev/pts/1` | `/dev/pts/2` | Yes |
+| `devices.interfaces[0].source.network.port_id` | No | `6d44f700-e5da-467f-a03c-7e3870351a8a` | `a9941685-2de1-463b-8da7-13796208d551` | Yes |
+
+The existing `devices` normalization also suppresses provider-added libvirt
+XML defaults needed for an imported domain to remain stable. The five paths above are the additional runtime leaves that must be explicitly
+normalized; imported `resource` and `sec_label` are likewise provider-only
+domain metadata. Pool, volume, domain identity, replacement triggers, and
+non-device drift remain visible to Terraform.
+
 ## Offline provider mirror
 
 `make prepare-offline` populates `.cache/terraform/provider-mirror/` and writes
