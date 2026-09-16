@@ -172,6 +172,10 @@ resource "libvirt_domain" "vm" {
   on_crash    = "destroy"
   on_poweroff = "destroy"
 
+  features = {
+    acpi = true
+  }
+
   lifecycle {
     replace_triggered_by = [
       libvirt_volume.vm_disk,
